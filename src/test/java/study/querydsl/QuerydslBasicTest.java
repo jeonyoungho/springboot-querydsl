@@ -1,9 +1,12 @@
 package study.querydsl;
 
+import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Predicate;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
@@ -13,12 +16,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.Commit;
+import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
 import study.querydsl.dto.MemberDto;
+import study.querydsl.dto.QMemberDto;
 import study.querydsl.dto.UserDto;
 import study.querydsl.entity.Member;
 import study.querydsl.entity.QMember;
-import study.querydsl.entity.QTeam;
 import study.querydsl.entity.Team;
 
 import javax.persistence.EntityManager;
@@ -608,4 +613,135 @@ public class QuerydslBasicTest {
             System.out.println("userDto = " + userDto);
         }
     }
+
+    @Test
+    public void findDtoByQueryProjection() {
+        List<MemberDto> result = queryFactory
+                .select(new QMemberDto(member.username, member.age))
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto = " + memberDto);
+        }
+    }
+
+    @Test
+    public void dynamicQuery_BooleanBuilder() {
+        String usernameParam = "member1";
+        Integer ageParam = 10;
+
+        List<Member> result = searchMember1(usernameParam, ageParam);
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+    private List<Member> searchMember1(String usernameCond, Integer ageCond) {
+
+        BooleanBuilder builder = new BooleanBuilder(); // new BooleanBuilder(member.username.eq(usernameCond)); 이렇게 초기값을 줄 수 있음
+        if (usernameCond != null) {
+            builder.and(member.username.eq(usernameCond));
+        }
+        if(ageCond != null) {
+            builder.and(member.age.eq(ageCond));
+        }
+        return queryFactory
+                .selectFrom(member)
+                .where(builder)
+                .fetch();
+    }
+
+    @Test
+    public void dynamicQuery_WhereParam() {
+        String usernameParam = "member1";
+        Integer ageParam = null;
+
+        List<Member> result = searchMember2(usernameParam, ageParam);
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+    private List<Member> searchMember2(String usernameCond, Integer ageCond) {
+        return queryFactory
+                .selectFrom(member)
+                .where(
+                        usernameEq(usernameCond),
+                        ageEq(ageCond)
+//                        allEq(usernameCond, ageCond)
+                )
+                .fetch();
+    }
+
+    private BooleanExpression usernameEq(String usernameCond) {
+        return usernameCond != null ? member.username.eq(usernameCond) : null;
+    }
+
+    private BooleanExpression ageEq(Integer ageCond) {
+        return ageCond != null ? member.age.eq(ageCond) : null;
+    }
+
+    // 광고 상태 isValid, 날짜가 In: isServicable
+//    private BooleanExpression isServicable(String usernameCond, Integer ageCond) {
+//        return isValid(usernameCond).and(DateBetweenIn(ageCond));
+//    }
+
+    private BooleanExpression allEq(String usernameCond, Integer ageCond) {
+        return usernameEq(usernameCond).and(ageEq(ageCond));
+    }
+
+    /**
+     * where 다중 파라미터 사용의 장점
+     * 1. 재사용성 좋아짐
+     * 2. 쿼리 자체의 가독성이 높아짐(메소드로 뽑으니 이름을 부여할 수 있기에)
+     * 3. 조합해서 사용할 수 있음 (현재 쿠폰이 가능한 상태여야하고 유효한 날짜여아하고.. 이런 것들을 합쳐서 뽑아낼 수 있음 -> 코드가 정말 깔끔해짐, 자바 코드기에 가능)
+     * 물론 null 체크는 주의해서 처리해야 한다.
+     */
+
+    @Test
+//    @Commit
+    public void bulkUpdate() {
+
+        // member1 = 10 -> DB 비회원
+        // member2 = 20 -> 비회원
+        // member3 = 30 -> 유지
+        // member4 = 40 -> 유지
+
+        long count = queryFactory
+                .update(member)
+                .set(member.username, "비회원")
+                .where(member.age.lt(28))
+                .execute();
+
+        em.flush();
+        em.clear();
+
+        // 모든 벌크 연산은 영속성 컨텍스트를 무시하고 바로 DB의 값을 바꿔버리기에 둘의 상태가 안맞게 된다.
+        // 1 member1 = 10 -> 1 DB 비회원
+        // 2 member2 = 20 -> 2 DB 비회원
+        // 3 member3 = 30 -> 3 DB member3
+        // 4 member4 = 40 -> 4 DB member4
+
+        // 만약 select 쿼리로 데이터를 가져와도 이미 영속성 컨텍스트에 존재하기에 버려버리게 된다.
+        // 이런 것을 repeatable read 라 한다.
+        List<Member> result = queryFactory
+                .selectFrom(member)
+                .fetch();
+
+        for (Member member1 : result) {
+            System.out.println("member1 = " + member1);
+        }
+
+    }
+
+    @Test
+    public void bulkAdd() {
+        long count = queryFactory
+                .update(member)
+                .set(member.age, member.age.multiply(2))
+                .execute();
+    }
+
+    @Test
+    public void bulkDelete() {
+        
+    }
+
 }
