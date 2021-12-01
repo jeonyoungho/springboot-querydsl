@@ -111,7 +111,7 @@ public class MemberRepositoryImpl extends QuerydslRepositorySupport implements M
         return new PageImpl<>(content, pageable, total);
     }
 
-    public Page<MemberTeamDto> searchPageSimpleWithQuerydslREpositorySupport(MemberSearchCondition condition, Pageable pageable) {
+    public Page<MemberTeamDto> searchPageSimpleWithQuerydslRepositorySupport(MemberSearchCondition condition, Pageable pageable) {
         /**
          * 장점
          * - getQuerydsl().applyPagination() 스프링 데이터가 제공하는 페이징을 Querydsl로 편리하게 변환
