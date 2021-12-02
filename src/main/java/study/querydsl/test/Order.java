@@ -7,7 +7,9 @@ import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static javax.persistence.CascadeType.ALL;
 
@@ -26,6 +28,9 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = ALL)
     private List<OrderItem> items = new ArrayList<>();
 
+    @OneToMany(mappedBy = "order", cascade = ALL)
+    private Set<Delivery> deliveries = new LinkedHashSet<>();
+
     @Builder
     public Order(String name) {
         this.name = name;
@@ -34,6 +39,11 @@ public class Order {
     public void addItem(OrderItem item) {
         items.add(item);
         item.setOrder(this);
+    }
+
+    public void addDelivery(Delivery delivery) {
+        deliveries.add(delivery);
+        delivery.setOrder(this);
     }
 
 }
